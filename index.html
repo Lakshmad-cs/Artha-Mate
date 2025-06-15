@@ -230,6 +230,32 @@
       height: auto;
       box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
       margin-bottom: 1rem;
+      cursor: crosshair;
+      position: relative;
+    }
+
+    .crop-overlay {
+      position: absolute;
+      border: 2px dashed #667eea;
+      background: rgba(102, 126, 234, 0.1);
+      pointer-events: none;
+      display: none;
+    }
+
+    .crop-handles {
+      position: absolute;
+      width: 8px;
+      height: 8px;
+      background: #667eea;
+      border: 2px solid white;
+      border-radius: 50%;
+      pointer-events: all;
+      cursor: pointer;
+    }
+
+    .canvas-container-wrapper {
+      position: relative;
+      display: inline-block;
     }
 
     .canvas-controls {
@@ -368,7 +394,6 @@
       </div>
       
       <button id="cameraBtn" class="btn-primary">📷 Capture from Camera</button>
-      <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display: none;">
     </div>
 
     <div class="controls">
@@ -413,7 +438,6 @@
   <script>
     const upload = document.getElementById('upload');
     const cameraBtn = document.getElementById('cameraBtn');
-    const cameraInput = document.getElementById('cameraInput');
     const canvasContainer = document.getElementById('canvasContainer');
     const brightnessSlider = document.getElementById('brightness');
     const contrastSlider = document.getElementById('contrast');
@@ -429,10 +453,175 @@
     let canvases = [];
     let currentIndex = 0;
     let backups = [];
+    let cropData = {};
+
+    // Camera functionality
+    cameraBtn.addEventListener('click', async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { 
+            facingMode: { ideal: 'environment' } // Use back camera if available
+          } 
+        });
+        
+        const video = document.createElement('video');
+        video.srcObject = stream;
+        video.autoplay = true;
+        video.playsInline = true;
+        
+        const modal = document.createElement('div');
+        modal.style.cssText = `
+          position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+          background: rgba(0,0,0,0.9); display: flex; flex-direction: column;
+          justify-content: center; align-items: center; z-index: 1000;
+        `;
+        
+        video.style.cssText = `max-width: 90%; max-height: 70%; border-radius: 12px;`;
+        
+        const captureBtn = document.createElement('button');
+        captureBtn.textContent = '📸 Capture';
+        captureBtn.className = 'btn-success';
+        captureBtn.style.marginTop = '20px';
+        
+        const closeBtn = document.createElement('button');
+        closeBtn.textContent = '❌ Close';
+        closeBtn.className = 'btn-danger';
+        closeBtn.style.marginTop = '10px';
+        
+        modal.appendChild(video);
+        modal.appendChild(captureBtn);
+        modal.appendChild(closeBtn);
+        document.body.appendChild(modal);
+        
+        captureBtn.onclick = () => {
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          ctx.drawImage(video, 0, 0);
+          
+          // Convert canvas to blob and create file
+          canvas.toBlob(blob => {
+            const file = new File([blob], 'camera-capture.jpg', { type: 'image/jpeg' });
+            handleImage(file);
+          });
+          
+          stream.getTracks().forEach(track => track.stop());
+          document.body.removeChild(modal);
+        };
+        
+        closeBtn.onclick = () => {
+          stream.getTracks().forEach(track => track.stop());
+          document.body.removeChild(modal);
+        };
+        
+      } catch (err) {
+        console.error('Camera access denied:', err);
+        alert('Camera access denied or not available. Please check permissions or try uploading an image instead.');
+      }
+    });
 
     function showCanvas(index) {
       document.querySelectorAll('.canvas-wrapper').forEach((el, i) => {
         el.style.display = i === index ? 'block' : 'none';
+      });
+    }
+
+    function setupManualCrop(canvas, wrapper) {
+      const canvasWrapper = document.createElement('div');
+      canvasWrapper.className = 'canvas-container-wrapper';
+      
+      const overlay = document.createElement('div');
+      overlay.className = 'crop-overlay';
+      
+      canvas.parentNode.insertBefore(canvasWrapper, canvas);
+      canvasWrapper.appendChild(canvas);
+      canvasWrapper.appendChild(overlay);
+      
+      let isDrawing = false;
+      let startX, startY, currentX, currentY;
+      
+      const getCanvasCoordinates = (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        
+        const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+        const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+        
+        return {
+          x: (clientX - rect.left) * scaleX,
+          y: (clientY - rect.top) * scaleY,
+          displayX: clientX - rect.left,
+          displayY: clientY - rect.top
+        };
+      };
+      
+      const startDrawing = (e) => {
+        isDrawing = true;
+        const coords = getCanvasCoordinates(e);
+        startX = coords.x;
+        startY = coords.y;
+        overlay.style.display = 'block';
+        overlay.style.left = coords.displayX + 'px';
+        overlay.style.top = coords.displayY + 'px';
+        overlay.style.width = '0px';
+        overlay.style.height = '0px';
+      };
+      
+      const draw = (e) => {
+        if (!isDrawing) return;
+        const coords = getCanvasCoordinates(e);
+        currentX = coords.x;
+        currentY = coords.y;
+        
+        const width = Math.abs(coords.displayX - (startX * canvas.getBoundingClientRect().width / canvas.width));
+        const height = Math.abs(coords.displayY - (startY * canvas.getBoundingClientRect().height / canvas.height));
+        const left = Math.min(coords.displayX, startX * canvas.getBoundingClientRect().width / canvas.width);
+        const top = Math.min(coords.displayY, startY * canvas.getBoundingClientRect().height / canvas.height);
+        
+        overlay.style.left = left + 'px';
+        overlay.style.top = top + 'px';
+        overlay.style.width = width + 'px';
+        overlay.style.height = height + 'px';
+      };
+      
+      const stopDrawing = () => {
+        if (!isDrawing) return;
+        isDrawing = false;
+        
+        const cropX = Math.min(startX, currentX);
+        const cropY = Math.min(startY, currentY);
+        const cropWidth = Math.abs(currentX - startX);
+        const cropHeight = Math.abs(currentY - startY);
+        
+        if (cropWidth > 10 && cropHeight > 10) {
+          cropData[canvases.indexOf(canvas)] = {
+            x: cropX,
+            y: cropY,
+            width: cropWidth,
+            height: cropHeight
+          };
+        }
+      };
+      
+      // Mouse events
+      canvas.addEventListener('mousedown', startDrawing);
+      canvas.addEventListener('mousemove', draw);
+      canvas.addEventListener('mouseup', stopDrawing);
+      
+      // Touch events
+      canvas.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        startDrawing(e);
+      });
+      canvas.addEventListener('touchmove', (e) => {
+        e.preventDefault();
+        draw(e);
+      });
+      canvas.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        stopDrawing();
       });
     }
 
@@ -449,6 +638,8 @@
         const wrapper = document.createElement('div');
         wrapper.className = 'canvas-wrapper';
         wrapper.appendChild(canvas);
+
+        setupManualCrop(canvas, wrapper);
 
         const controlsDiv = document.createElement('div');
         controlsDiv.className = 'canvas-controls';
@@ -484,9 +675,9 @@
         };
 
         const cropBtn = document.createElement('button');
-        cropBtn.innerText = "✂️ Auto Crop";
+        cropBtn.innerText = "✂️ Apply Crop";
         cropBtn.className = 'btn-success';
-        cropBtn.onclick = () => autoCrop(canvas);
+        cropBtn.onclick = () => applyCrop(canvas);
 
         controlsDiv.appendChild(rotateBtn);
         controlsDiv.appendChild(undoBtn);
@@ -500,18 +691,31 @@
       img.src = URL.createObjectURL(file);
     }
 
+    function applyCrop(canvas) {
+      const canvasIndex = canvases.indexOf(canvas);
+      const crop = cropData[canvasIndex];
+      
+      if (!crop) {
+        alert('Please select an area to crop by dragging on the image.');
+        return;
+      }
+      
+      const ctx = canvas.getContext('2d');
+      const croppedImageData = ctx.getImageData(crop.x, crop.y, crop.width, crop.height);
+      
+      canvas.width = crop.width;
+      canvas.height = crop.height;
+      ctx.putImageData(croppedImageData, 0, 0);
+      addWatermark(ctx, canvas);
+      
+      // Clear crop data and overlay
+      delete cropData[canvasIndex];
+      const overlay = canvas.parentNode.querySelector('.crop-overlay');
+      if (overlay) overlay.style.display = 'none';
+    }
+
     upload.addEventListener('change', (e) => {
       Array.from(e.target.files).forEach(handleImage);
-    });
-
-    cameraBtn.addEventListener('click', () => {
-      cameraInput.click();
-    });
-
-    cameraInput.addEventListener('change', (e) => {
-      if (e.target.files.length > 0) {
-        handleImage(e.target.files[0]);
-      }
     });
 
     function addWatermark(ctx, canvas) {
@@ -557,6 +761,7 @@
       canvasContainer.innerHTML = '';
       canvases = [];
       backups = [];
+      cropData = {};
       currentIndex = 0;
     });
 
@@ -597,39 +802,6 @@
       });
       pdf.save('scanned-pages.pdf');
     });
-
-    function autoCrop(canvas) {
-      const ctx = canvas.getContext('2d');
-      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const pixels = imgData.data;
-
-      let top = null, bottom = null, left = null, right = null;
-
-      for (let y = 0; y < canvas.height; y++) {
-        for (let x = 0; x < canvas.width; x++) {
-          const i = (y * canvas.width + x) * 4;
-          const r = pixels[i], g = pixels[i + 1], b = pixels[i + 2];
-          const brightness = (r + g + b) / 3;
-
-          if (brightness < 240) {
-            if (top === null) top = y;
-            bottom = y;
-            if (left === null || x < left) left = x;
-            if (right === null || x > right) right = x;
-          }
-        }
-      }
-
-      if (top !== null) {
-        const cropWidth = right - left;
-        const cropHeight = bottom - top;
-        const croppedImage = ctx.getImageData(left, top, cropWidth, cropHeight);
-        canvas.width = cropWidth;
-        canvas.height = cropHeight;
-        ctx.putImageData(croppedImage, 0, 0);
-        addWatermark(ctx, canvas);
-      }
-    }
   </script>
 </body>
 </html>
