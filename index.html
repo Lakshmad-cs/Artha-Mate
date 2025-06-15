@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Photo to Scan Converter - Artha</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    body {
+      font-family: sans-serif;
+      background: #f0f0f0;
+      text-align: center;
+      padding: 20px;
+    }
+    input, button, label {
+      margin: 5px;
+      padding: 8px;
+      font-size: 16px;
+    }
+    canvas {
+      border: 1px solid #ccc;
+      max-width: 90%;
+      margin: 10px 0;
+    }
+    .canvas-container {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      flex-direction: column;
+    }
+    .canvas-wrapper {
+      background: #fff;
+      border: 1px solid #ccc;
+      margin: 10px;
+      padding: 10px;
+      display: none;
+    }
+    @keyframes glow {
+      from { color: #333; }
+      to { color: #3c83ff; }
+    }
+  </style>
+</head>
+<body>
+  <h2 style="animation: glow 2s ease-in-out infinite alternate;">
+    ✨ “Proudly made by Artha Education Institute – Helping every student shine brighter!” ✨
+  </h2>
+
+  <input type="file" id="upload" accept="image/*" multiple><br>
+  <button id="cameraBtn">📷 Capture from Camera</button>
+  <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display: none;"><br>
+
+  <div class="controls">
+    <label>Grayscale: <input type="range" id="gray" min="0" max="1" step="0.1" value="1"></label>
+    <label>Brightness: <input type="range" id="brightness" min="0" max="3" step="0.1" value="1.5"></label>
+    <label>Contrast: <input type="range" id="contrast" min="0" max="3" step="0.1" value="2"></label><br>
+    <button id="applyBtn">✨ Apply Effect</button>
+    <button id="applyAllBtn">✨ Apply to All</button>
+    <button id="clearBtn">🗑️ Clear All</button>
+    <button id="prevBtn">⬅️ Previous</button>
+    <button id="nextBtn">➡️ Next</button>
+  </div>
+
+  <div id="canvasContainer" class="canvas-container"></div>
+
+  <button id="downloadAllJpg">💾 Download JPGs (ZIP)</button>
+  <button id="downloadPDF">📄 Download as PDF</button>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.0/jszip.min.js"></script>
+  <script>
+    const upload = document.getElementById('upload');
+    const cameraBtn = document.getElementById('cameraBtn');
+    const cameraInput = document.getElementById('cameraInput');
+    const canvasContainer = document.getElementById('canvasContainer');
+    const brightnessSlider = document.getElementById('brightness');
+    const contrastSlider = document.getElementById('contrast');
+    const graySlider = document.getElementById('gray');
+    const applyBtn = document.getElementById('applyBtn');
+    const applyAllBtn = document.getElementById('applyAllBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const downloadAllJpg = document.getElementById('downloadAllJpg');
+    const downloadPDF = document.getElementById('downloadPDF');
+    const prevBtn = document.getElementById('prevBtn');
+    const nextBtn = document.getElementById('nextBtn');
+
+    let canvases = [];
+    let currentIndex = 0;
+    let backups = [];
+
+    function showCanvas(index) {
+      document.querySelectorAll('.canvas-wrapper').forEach((el, i) => {
+        el.style.display = i === index ? 'block' : 'none';
+      });
+    }
+
+    function handleImage(file) {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        ctx.drawImage(img, 0, 0);
+        addWatermark(ctx, canvas);
+
+        const wrapper = document.createElement('div');
+        wrapper.className = 'canvas-wrapper';
+        wrapper.appendChild(canvas);
+
+        const rotateBtn = document.createElement('button');
+        rotateBtn.innerText = "🔄 Rotate";
+        rotateBtn.onclick = () => {
+          const tempCanvas = document.createElement('canvas');
+          tempCanvas.width = canvas.height;
+          tempCanvas.height = canvas.width;
+          const tempCtx = tempCanvas.getContext('2d');
+          tempCtx.translate(tempCanvas.width / 2, tempCanvas.height / 2);
+          tempCtx.rotate(Math.PI / 2);
+          tempCtx.drawImage(canvas, -canvas.width / 2, -canvas.height / 2);
+          canvas.width = tempCanvas.width;
+          canvas.height = tempCanvas.height;
+          ctx.drawImage(tempCanvas, 0, 0);
+          addWatermark(ctx, canvas);
+        };
+
+        const undoBtn = document.createElement('button');
+        undoBtn.innerText = "↩️ Undo";
+        const backupImage = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        backups.push(backupImage);
+        undoBtn.onclick = () => {
+          ctx.putImageData(backups[currentIndex], 0, 0);
+          brightnessSlider.value = 1.5;
+          contrastSlider.value = 2;
+          graySlider.value = 1;
+          addWatermark(ctx, canvas);
+        };
+
+        const cropBtn = document.createElement('button');
+        cropBtn.innerText = "✂️ Auto Crop";
+        cropBtn.onclick = () => autoCrop(canvas);
+
+        wrapper.appendChild(rotateBtn);
+        wrapper.appendChild(undoBtn);
+        wrapper.appendChild(cropBtn);
+
+        canvasContainer.appendChild(wrapper);
+        canvases.push(canvas);
+        showCanvas(currentIndex);
+      };
+      img.src = URL.createObjectURL(file);
+    }
+
+    upload.addEventListener('change', (e) => {
+      Array.from(e.target.files).forEach(handleImage);
+    });
+
+    cameraBtn.addEventListener('click', () => {
+      cameraInput.click();
+    });
+
+    cameraInput.addEventListener('change', (e) => {
+      if (e.target.files.length > 0) {
+        handleImage(e.target.files[0]);
+      }
+    });
+
+    function addWatermark(ctx, canvas) {
+      ctx.font = "16px Arial";
+      ctx.fillStyle = "rgba(0,0,0,0.3)";
+      ctx.textAlign = "right";
+      ctx.fillText("Artha Education Institute", canvas.width - 10, canvas.height - 10);
+    }
+
+    function applyEffectToCanvas(canvas) {
+      const brightness = parseFloat(brightnessSlider.value);
+      const contrast = parseFloat(contrastSlider.value);
+      const grayscale = parseFloat(graySlider.value);
+      const ctx = canvas.getContext('2d');
+      let imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      let data = imageData.data;
+      for (let i = 0; i < data.length; i += 4) {
+        let r = data[i], g = data[i + 1], b = data[i + 2];
+        let avg = (r + g + b) / 3;
+        r = r * (1 - grayscale) + avg * grayscale;
+        g = g * (1 - grayscale) + avg * grayscale;
+        b = b * (1 - grayscale) + avg * grayscale;
+        r = (r - 128) * contrast + 128;
+        g = (g - 128) * contrast + 128;
+        b = (b - 128) * contrast + 128;
+        r *= brightness;
+        g *= brightness;
+        b *= brightness;
+        data[i] = Math.min(255, Math.max(0, r));
+        data[i + 1] = Math.min(255, Math.max(0, g));
+        data[i + 2] = Math.min(255, Math.max(0, b));
+      }
+      ctx.putImageData(imageData, 0, 0);
+      addWatermark(ctx, canvas);
+    }
+
+    applyBtn.addEventListener('click', () => applyEffectToCanvas(canvases[currentIndex]));
+    applyAllBtn.addEventListener('click', () => {
+      canvases.forEach(canvas => applyEffectToCanvas(canvas));
+    });
+
+    clearBtn.addEventListener('click', () => {
+      canvasContainer.innerHTML = '';
+      canvases = [];
+      backups = [];
+      currentIndex = 0;
+    });
+
+    prevBtn.addEventListener('click', () => {
+      if (currentIndex > 0) currentIndex--;
+      showCanvas(currentIndex);
+    });
+
+    nextBtn.addEventListener('click', () => {
+      if (currentIndex < canvases.length - 1) currentIndex++;
+      showCanvas(currentIndex);
+    });
+
+    downloadAllJpg.addEventListener('click', () => {
+      const zip = new JSZip();
+      canvases.forEach((canvas, index) => {
+        const dataURL = canvas.toDataURL('image/jpeg', 1.0);
+        const imgData = dataURL.split(',')[1];
+        zip.file(`scan-${index + 1}.jpg`, imgData, { base64: true });
+      });
+      zip.generateAsync({ type: "blob" }).then(content => {
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(content);
+        link.download = "scanned-images.zip";
+        link.click();
+      });
+    });
+
+    downloadPDF.addEventListener('click', async () => {
+      const { jsPDF } = window.jspdf;
+      const pdf = new jsPDF();
+      canvases.forEach((canvas, i) => {
+        const imgData = canvas.toDataURL('image/jpeg', 1.0);
+        const width = pdf.internal.pageSize.getWidth();
+        const height = pdf.internal.pageSize.getHeight();
+        pdf.addImage(imgData, 'JPEG', 0, 0, width, height);
+        if (i < canvases.length - 1) pdf.addPage();
+      });
+      pdf.save('scanned-pages.pdf');
+    });
+
+    function autoCrop(canvas) {
+      const ctx = canvas.getContext('2d');
+      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const pixels = imgData.data;
+
+      let top = null, bottom = null, left = null, right = null;
+
+      for (let y = 0; y < canvas.height; y++) {
+        for (let x = 0; x < canvas.width; x++) {
+          const i = (y * canvas.width + x) * 4;
+          const r = pixels[i], g = pixels[i + 1], b = pixels[i + 2];
+          const brightness = (r + g + b) / 3;
+
+          if (brightness < 240) {
+            if (top === null) top = y;
+            bottom = y;
+            if (left === null || x < left) left = x;
+            if (right === null || x > right) right = x;
+          }
+        }
+      }
+
+      if (top !== null) {
+        const cropWidth = right - left;
+        const cropHeight = bottom - top;
+        const croppedImage = ctx.getImageData(left, top, cropWidth, cropHeight);
+        canvas.width = cropWidth;
+        canvas.height = cropHeight;
+        ctx.putImageData(croppedImage, 0, 0);
+        addWatermark(ctx, canvas);
+      }
+    }
+  </script>
+</body>
+</html>
