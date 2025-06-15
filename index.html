@@ -5,65 +5,408 @@
   <title>Photo to Scan Converter - Artha</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
     body {
-      font-family: sans-serif;
-      background: #f0f0f0;
-      text-align: center;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      color: #333;
+      line-height: 1.6;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
       padding: 20px;
     }
-    input, button, label {
-      margin: 5px;
-      padding: 8px;
+
+    .header {
+      text-align: center;
+      margin-bottom: 2rem;
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(10px);
+      border-radius: 20px;
+      padding: 2rem;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .header h2 {
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      font-size: clamp(1.2rem, 4vw, 2rem);
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+      animation: glow 3s ease-in-out infinite alternate;
+    }
+
+    @keyframes glow {
+      from { 
+        filter: drop-shadow(0 0 5px rgba(102, 126, 234, 0.3));
+      }
+      to { 
+        filter: drop-shadow(0 0 15px rgba(118, 75, 162, 0.6));
+      }
+    }
+
+    .upload-section {
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(10px);
+      border-radius: 20px;
+      padding: 2rem;
+      margin-bottom: 2rem;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      text-align: center;
+    }
+
+    .file-input-wrapper {
+      position: relative;
+      display: inline-block;
+      margin: 10px;
+    }
+
+    input[type="file"] {
+      position: absolute;
+      opacity: 0;
+      width: 100%;
+      height: 100%;
+      cursor: pointer;
+    }
+
+    .file-input-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      color: white;
+      padding: 12px 24px;
+      border-radius: 50px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+      border: none;
       font-size: 16px;
     }
-    canvas {
-      border: 1px solid #ccc;
-      max-width: 90%;
-      margin: 10px 0;
+
+    .file-input-label:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
     }
+
+    button {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 50px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      margin: 5px;
+      box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+    }
+
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
+    }
+
+    button:active {
+      transform: translateY(0);
+    }
+
+    .controls {
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(10px);
+      border-radius: 20px;
+      padding: 2rem;
+      margin-bottom: 2rem;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .controls-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .control-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .control-group label {
+      font-weight: 600;
+      color: #555;
+      font-size: 14px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      height: 6px;
+      background: #e0e0e0;
+      border-radius: 3px;
+      outline: none;
+      transition: all 0.3s ease;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 20px;
+      height: 20px;
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      border-radius: 50%;
+      cursor: pointer;
+      box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+      transition: all 0.3s ease;
+    }
+
+    input[type="range"]::-webkit-slider-thumb:hover {
+      transform: scale(1.1);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+
+    input[type="range"]::-moz-range-thumb {
+      width: 20px;
+      height: 20px;
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      border-radius: 50%;
+      cursor: pointer;
+      border: none;
+      box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+    }
+
+    .button-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: center;
+      margin-top: 1rem;
+    }
+
     .canvas-container {
       display: flex;
       justify-content: center;
       align-items: center;
       flex-direction: column;
+      margin: 2rem 0;
     }
+
     .canvas-wrapper {
-      background: #fff;
-      border: 1px solid #ccc;
-      margin: 10px;
-      padding: 10px;
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(10px);
+      border-radius: 20px;
+      padding: 2rem;
+      margin: 1rem;
       display: none;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      max-width: 90%;
     }
-    @keyframes glow {
-      from { color: #333; }
-      to { color: #3c83ff; }
+
+    canvas {
+      border-radius: 12px;
+      max-width: 100%;
+      height: auto;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+      margin-bottom: 1rem;
+    }
+
+    .canvas-controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: center;
+    }
+
+    .download-section {
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(10px);
+      border-radius: 20px;
+      padding: 2rem;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      text-align: center;
+    }
+
+    .navigation-controls {
+      display: flex;
+      justify-content: center;
+      gap: 1rem;
+      margin: 1rem 0;
+    }
+
+    /* Special button styles */
+    .btn-primary { background: linear-gradient(135deg, #667eea, #764ba2); }
+    .btn-success { background: linear-gradient(135deg, #56ab2f, #a8e6cf); }
+    .btn-warning { background: linear-gradient(135deg, #f093fb, #f5576c); }
+    .btn-danger { background: linear-gradient(135deg, #ff9a9e, #fecfef); }
+    .btn-info { background: linear-gradient(135deg, #a8edea, #fed6e3); }
+
+    /* Mobile optimizations */
+    @media (max-width: 768px) {
+      .container {
+        padding: 10px;
+      }
+
+      .header {
+        padding: 1.5rem;
+        margin-bottom: 1rem;
+      }
+
+      .upload-section,
+      .controls,
+      .download-section {
+        padding: 1.5rem;
+        margin-bottom: 1rem;
+      }
+
+      .controls-grid {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+      }
+
+      button {
+        padding: 10px 20px;
+        font-size: 14px;
+        margin: 3px;
+      }
+
+      .button-group {
+        gap: 5px;
+      }
+
+      .canvas-wrapper {
+        padding: 1rem;
+        margin: 0.5rem 0;
+      }
+
+      .navigation-controls {
+        flex-direction: column;
+        align-items: center;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .header h2 {
+        font-size: 1rem;
+      }
+
+      button {
+        width: 100%;
+        max-width: 280px;
+        justify-content: center;
+      }
+
+      .button-group {
+        flex-direction: column;
+        align-items: center;
+      }
+
+      .navigation-controls {
+        gap: 0.5rem;
+      }
+    }
+
+    /* Loading animations */
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.7; }
+    }
+
+    .loading {
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+
+    /* Focus styles for accessibility */
+    button:focus,
+    input[type="range"]:focus {
+      outline: 2px solid #667eea;
+      outline-offset: 2px;
+    }
+
+    /* Smooth scrolling */
+    html {
+      scroll-behavior: smooth;
     }
   </style>
 </head>
 <body>
-  <h2 style="animation: glow 2s ease-in-out infinite alternate;">
-    ✨ “Proudly made by Artha Education Institute – Helping every student shine brighter!” ✨
-  </h2>
+  <div class="container">
+    <div class="header">
+      <h2>
+        ✨ "Proudly made by Artha Education Institute – Helping every student shine brighter!" ✨
+      </h2>
+    </div>
 
-  <input type="file" id="upload" accept="image/*" multiple><br>
-  <button id="cameraBtn">📷 Capture from Camera</button>
-  <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display: none;"><br>
+    <div class="upload-section">
+      <div class="file-input-wrapper">
+        <input type="file" id="upload" accept="image/*" multiple>
+        <label for="upload" class="file-input-label">
+          📁 Choose Files
+        </label>
+      </div>
+      
+      <button id="cameraBtn" class="btn-primary">📷 Capture from Camera</button>
+      <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display: none;">
+    </div>
 
-  <div class="controls">
-    <label>Grayscale: <input type="range" id="gray" min="0" max="1" step="0.1" value="1"></label>
-    <label>Brightness: <input type="range" id="brightness" min="0" max="3" step="0.1" value="1.5"></label>
-    <label>Contrast: <input type="range" id="contrast" min="0" max="3" step="0.1" value="2"></label><br>
-    <button id="applyBtn">✨ Apply Effect</button>
-    <button id="applyAllBtn">✨ Apply to All</button>
-    <button id="clearBtn">🗑️ Clear All</button>
-    <button id="prevBtn">⬅️ Previous</button>
-    <button id="nextBtn">➡️ Next</button>
+    <div class="controls">
+      <div class="controls-grid">
+        <div class="control-group">
+          <label for="gray">Grayscale</label>
+          <input type="range" id="gray" min="0" max="1" step="0.1" value="1">
+        </div>
+        <div class="control-group">
+          <label for="brightness">Brightness</label>
+          <input type="range" id="brightness" min="0" max="3" step="0.1" value="1.5">
+        </div>
+        <div class="control-group">
+          <label for="contrast">Contrast</label>
+          <input type="range" id="contrast" min="0" max="3" step="0.1" value="2">
+        </div>
+      </div>
+      <div class="button-group">
+        <button id="applyBtn" class="btn-success">✨ Apply Effect</button>
+        <button id="applyAllBtn" class="btn-success">✨ Apply to All</button>
+        <button id="clearBtn" class="btn-danger">🗑️ Clear All</button>
+      </div>
+    </div>
+
+    <div class="navigation-controls">
+      <button id="prevBtn" class="btn-info">⬅️ Previous</button>
+      <button id="nextBtn" class="btn-info">➡️ Next</button>
+    </div>
+
+    <div id="canvasContainer" class="canvas-container"></div>
+
+    <div class="download-section">
+      <div class="button-group">
+        <button id="downloadAllJpg" class="btn-warning">💾 Download JPGs (ZIP)</button>
+        <button id="downloadPDF" class="btn-warning">📄 Download as PDF</button>
+      </div>
+    </div>
   </div>
-
-  <div id="canvasContainer" class="canvas-container"></div>
-
-  <button id="downloadAllJpg">💾 Download JPGs (ZIP)</button>
-  <button id="downloadPDF">📄 Download as PDF</button>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.0/jszip.min.js"></script>
@@ -107,8 +450,12 @@
         wrapper.className = 'canvas-wrapper';
         wrapper.appendChild(canvas);
 
+        const controlsDiv = document.createElement('div');
+        controlsDiv.className = 'canvas-controls';
+
         const rotateBtn = document.createElement('button');
         rotateBtn.innerText = "🔄 Rotate";
+        rotateBtn.className = 'btn-info';
         rotateBtn.onclick = () => {
           const tempCanvas = document.createElement('canvas');
           tempCanvas.width = canvas.height;
@@ -125,6 +472,7 @@
 
         const undoBtn = document.createElement('button');
         undoBtn.innerText = "↩️ Undo";
+        undoBtn.className = 'btn-warning';
         const backupImage = ctx.getImageData(0, 0, canvas.width, canvas.height);
         backups.push(backupImage);
         undoBtn.onclick = () => {
@@ -137,11 +485,13 @@
 
         const cropBtn = document.createElement('button');
         cropBtn.innerText = "✂️ Auto Crop";
+        cropBtn.className = 'btn-success';
         cropBtn.onclick = () => autoCrop(canvas);
 
-        wrapper.appendChild(rotateBtn);
-        wrapper.appendChild(undoBtn);
-        wrapper.appendChild(cropBtn);
+        controlsDiv.appendChild(rotateBtn);
+        controlsDiv.appendChild(undoBtn);
+        controlsDiv.appendChild(cropBtn);
+        wrapper.appendChild(controlsDiv);
 
         canvasContainer.appendChild(wrapper);
         canvases.push(canvas);
