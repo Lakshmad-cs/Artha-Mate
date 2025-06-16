@@ -783,12 +783,14 @@
         zip.file(`scan-${index + 1}.jpg`, imgData, { base64: true });
       });
       zip.generateAsync({ type: "blob" }).then(content => {
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(content);
-        link.download = "scanned-images.zip";
-        link.click();
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(content);
+      link.download = "scanned-images.zip";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
       });
-    });
+
 
     downloadPDF.addEventListener('click', async () => {
       const { jsPDF } = window.jspdf;
@@ -800,7 +802,14 @@
         pdf.addImage(imgData, 'JPEG', 0, 0, width, height);
         if (i < canvases.length - 1) pdf.addPage();
       });
-      pdf.save('scanned-pages.pdf');
+      const blob = pdf.output('blob');
+const link = document.createElement('a');
+link.href = URL.createObjectURL(blob);
+link.download = 'scanned-pages.pdf';
+document.body.appendChild(link);
+link.click();
+document.body.removeChild(link);
+
     });
   </script>
 </body>
