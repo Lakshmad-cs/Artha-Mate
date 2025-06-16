@@ -282,6 +282,51 @@
       margin: 1rem 0;
     }
 
+    /* Modal styles for mobile sharing */
+    .modal {
+      display: none;
+      position: fixed;
+      z-index: 1000;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0,0,0,0.8);
+      backdrop-filter: blur(10px);
+    }
+
+    .modal-content {
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(20px);
+      margin: 10% auto;
+      padding: 2rem;
+      border-radius: 20px;
+      width: 90%;
+      max-width: 500px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+      text-align: center;
+    }
+
+    .modal-image {
+      max-width: 100%;
+      max-height: 300px;
+      border-radius: 12px;
+      margin: 1rem 0;
+      box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+    }
+
+    .close {
+      color: #aaa;
+      float: right;
+      font-size: 28px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    .close:hover {
+      color: #667eea;
+    }
+
     /* Special button styles */
     .btn-primary { background: linear-gradient(135deg, #667eea, #764ba2); }
     .btn-success { background: linear-gradient(135deg, #56ab2f, #a8e6cf); }
@@ -331,6 +376,12 @@
         flex-direction: column;
         align-items: center;
       }
+
+      .modal-content {
+        margin: 5% auto;
+        width: 95%;
+        padding: 1.5rem;
+      }
     }
 
     @media (max-width: 480px) {
@@ -374,6 +425,16 @@
     /* Smooth scrolling */
     html {
       scroll-behavior: smooth;
+    }
+
+    /* Share message styles */
+    .share-message {
+      background: linear-gradient(135deg, #56ab2f, #a8e6cf);
+      color: white;
+      padding: 1rem;
+      border-radius: 12px;
+      margin: 1rem 0;
+      font-weight: 600;
     }
   </style>
 </head>
@@ -429,6 +490,24 @@
       <div class="button-group">
         <button id="downloadAllJpg" class="btn-warning">💾 Download JPGs (ZIP)</button>
         <button id="downloadPDF" class="btn-warning">📄 Download as PDF</button>
+        <button id="shareBtn" class="btn-success">📱 Share Images</button>
+        <button id="viewImagesBtn" class="btn-info">👁️ View Images</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal for image viewing and sharing -->
+  <div id="imageModal" class="modal">
+    <div class="modal-content">
+      <span class="close">&times;</span>
+      <h3>Processed Images</h3>
+      <div id="modalImageContainer"></div>
+      <div class="share-message">
+        💡 Tip: Long press on any image to save it to your device, or use the share button to send via other apps!
+      </div>
+      <div class="button-group">
+        <button id="modalShareBtn" class="btn-success">📱 Share Current Image</button>
+        <button id="modalSaveBtn" class="btn-warning">💾 Save Current Image</button>
       </div>
     </div>
   </div>
@@ -447,13 +526,172 @@
     const clearBtn = document.getElementById('clearBtn');
     const downloadAllJpg = document.getElementById('downloadAllJpg');
     const downloadPDF = document.getElementById('downloadPDF');
+    const shareBtn = document.getElementById('shareBtn');
+    const viewImagesBtn = document.getElementById('viewImagesBtn');
     const prevBtn = document.getElementById('prevBtn');
     const nextBtn = document.getElementById('nextBtn');
+    
+    // Modal elements
+    const modal = document.getElementById('imageModal');
+    const modalClose = document.querySelector('.close');
+    const modalImageContainer = document.getElementById('modalImageContainer');
+    const modalShareBtn = document.getElementById('modalShareBtn');
+    const modalSaveBtn = document.getElementById('modalSaveBtn');
 
     let canvases = [];
     let currentIndex = 0;
     let backups = [];
     let cropData = {};
+    let currentModalImageIndex = 0;
+
+    // Detect if running as standalone app
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || 
+                        window.navigator.standalone || 
+                        document.referrer.includes('android-app://');
+
+    // Mobile download function with multiple fallbacks
+    function mobileDownload(blob, filename) {
+      try {
+        // Method 1: Try direct download (works in regular browsers)
+        if (!isStandalone) {
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = filename;
+          a.style.display = 'none';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          return true;
+        }
+        
+        // Method 2: Try Web Share API if available
+        if (navigator.share && navigator.canShare) {
+          const file = new File([blob], filename, { type: blob.type });
+          if (navigator.canShare({ files: [file] })) {
+            navigator.share({
+              title: 'Scanned Images',
+              text: 'Images processed by Artha Scanner',
+              files: [file]
+            });
+            return true;
+          }
+        }
+        
+        // Method 3: Open in new tab/window (fallback)
+        const url = URL.createObjectURL(blob);
+        const newWindow = window.open(url, '_blank');
+        if (newWindow) {
+          // Show instructions
+          alert('Image opened in new tab. Please long-press the image and select "Save image" or "Download image"');
+          return true;
+        }
+        
+        return false;
+      } catch (error) {
+        console.error('Download failed:', error);
+        return false;
+      }
+    }
+
+    // Share single image using Web Share API or fallback
+    async function shareImage(canvas, filename = 'scanned-image.jpg') {
+      try {
+        canvas.toBlob(async (blob) => {
+          if (navigator.share && navigator.canShare) {
+            try {
+              const file = new File([blob], filename, { type: 'image/jpeg' });
+              if (navigator.canShare({ files: [file] })) {
+                await navigator.share({
+                  title: 'Scanned Image',
+                  text: 'Image processed by Artha Scanner',
+                  files: [file]
+                });
+                return;
+              }
+            } catch (shareError) {
+              console.log('Share API failed, trying fallback');
+            }
+          }
+          
+          // Fallback: Download or open image
+          if (!mobileDownload(blob, filename)) {
+            // Last resort: Show image in modal
+            showImageModal();
+          }
+        }, 'image/jpeg', 0.9);
+      } catch (error) {
+        console.error('Share failed:', error);
+        alert('Unable to share image. Please try the "View Images" option.');
+      }
+    }
+
+    // Show images in modal for manual saving
+    function showImageModal() {
+      modalImageContainer.innerHTML = '';
+      currentModalImageIndex = 0;
+      
+      if (canvases.length === 0) {
+        alert('No images to display. Please upload and process some images first.');
+        return;
+      }
+      
+      canvases.forEach((canvas, index) => {
+        const img = document.createElement('img');
+        img.src = canvas.toDataURL('image/jpeg', 0.9);
+        img.className = 'modal-image';
+        img.style.display = index === 0 ? 'block' : 'none';
+        img.alt = `Scanned image ${index + 1}`;
+        
+        // Add long-press context menu for mobile
+        img.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          return false;
+        });
+        
+        modalImageContainer.appendChild(img);
+      });
+      
+      modal.style.display = 'block';
+      updateModalNavigation();
+    }
+
+    function updateModalNavigation() {
+      const images = modalImageContainer.querySelectorAll('.modal-image');
+      images.forEach((img, index) => {
+        img.style.display = index === currentModalImageIndex ? 'block' : 'none';
+      });
+      
+      // Update navigation buttons
+      const navDiv = document.createElement('div');
+      navDiv.className = 'button-group';
+      navDiv.innerHTML = `
+        <button onclick="previousModalImage()" ${currentModalImageIndex === 0 ? 'disabled' : ''}>⬅️ Previous</button>
+        <span>Image ${currentModalImageIndex + 1} of ${canvases.length}</span>
+        <button onclick="nextModalImage()" ${currentModalImageIndex === canvases.length - 1 ? 'disabled' : ''}>➡️ Next</button>
+      `;
+      
+      // Remove existing navigation
+      const existingNav = modalImageContainer.querySelector('.button-group');
+      if (existingNav) existingNav.remove();
+      
+      modalImageContainer.appendChild(navDiv);
+    }
+
+    window.previousModalImage = function() {
+      if (currentModalImageIndex > 0) {
+        currentModalImageIndex--;
+        updateModalNavigation();
+      }
+    };
+
+    window.nextModalImage = function() {
+      if (currentModalImageIndex < canvases.length - 1) {
+        currentModalImageIndex++;
+        updateModalNavigation();
+      }
+    };
 
     // Camera functionality
     cameraBtn.addEventListener('click', async () => {
@@ -469,8 +707,8 @@
         video.autoplay = true;
         video.playsInline = true;
         
-        const modal = document.createElement('div');
-        modal.style.cssText = `
+        const cameraModal = document.createElement('div');
+        cameraModal.style.cssText = `
           position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
           background: rgba(0,0,0,0.9); display: flex; flex-direction: column;
           justify-content: center; align-items: center; z-index: 1000;
@@ -488,10 +726,10 @@
         closeBtn.className = 'btn-danger';
         closeBtn.style.marginTop = '10px';
         
-        modal.appendChild(video);
-        modal.appendChild(captureBtn);
-        modal.appendChild(closeBtn);
-        document.body.appendChild(modal);
+        cameraModal.appendChild(video);
+        cameraModal.appendChild(captureBtn);
+        cameraModal.appendChild(closeBtn);
+        document.body.appendChild(cameraModal);
         
         captureBtn.onclick = () => {
           const canvas = document.createElement('canvas');
@@ -507,12 +745,12 @@
           });
           
           stream.getTracks().forEach(track => track.stop());
-          document.body.removeChild(modal);
+          document.body.removeChild(cameraModal);
         };
         
         closeBtn.onclick = () => {
           stream.getTracks().forEach(track => track.stop());
-          document.body.removeChild(modal);
+          document.body.removeChild(cameraModal);
         };
         
       } catch (err) {
@@ -613,195 +851,3 @@
       // Touch events
       canvas.addEventListener('touchstart', (e) => {
         e.preventDefault();
-        startDrawing(e);
-      });
-      canvas.addEventListener('touchmove', (e) => {
-        e.preventDefault();
-        draw(e);
-      });
-      canvas.addEventListener('touchend', (e) => {
-        e.preventDefault();
-        stopDrawing();
-      });
-    }
-
-    function handleImage(file) {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        canvas.width = img.width;
-        canvas.height = img.height;
-        ctx.drawImage(img, 0, 0);
-        addWatermark(ctx, canvas);
-
-        const wrapper = document.createElement('div');
-        wrapper.className = 'canvas-wrapper';
-        wrapper.appendChild(canvas);
-
-        setupManualCrop(canvas, wrapper);
-
-        const controlsDiv = document.createElement('div');
-        controlsDiv.className = 'canvas-controls';
-
-        const rotateBtn = document.createElement('button');
-        rotateBtn.innerText = "🔄 Rotate";
-        rotateBtn.className = 'btn-info';
-        rotateBtn.onclick = () => {
-          const tempCanvas = document.createElement('canvas');
-          tempCanvas.width = canvas.height;
-          tempCanvas.height = canvas.width;
-          const tempCtx = tempCanvas.getContext('2d');
-          tempCtx.translate(tempCanvas.width / 2, tempCanvas.height / 2);
-          tempCtx.rotate(Math.PI / 2);
-          tempCtx.drawImage(canvas, -canvas.width / 2, -canvas.height / 2);
-          canvas.width = tempCanvas.width;
-          canvas.height = tempCanvas.height;
-          ctx.drawImage(tempCanvas, 0, 0);
-          addWatermark(ctx, canvas);
-        };
-
-        const undoBtn = document.createElement('button');
-        undoBtn.innerText = "↩️ Undo";
-        undoBtn.className = 'btn-warning';
-        const backupImage = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        backups.push(backupImage);
-        undoBtn.onclick = () => {
-          ctx.putImageData(backups[currentIndex], 0, 0);
-          brightnessSlider.value = 1.5;
-          contrastSlider.value = 2;
-          graySlider.value = 1;
-          addWatermark(ctx, canvas);
-        };
-
-        const cropBtn = document.createElement('button');
-        cropBtn.innerText = "✂️ Apply Crop";
-        cropBtn.className = 'btn-success';
-        cropBtn.onclick = () => applyCrop(canvas);
-
-        controlsDiv.appendChild(rotateBtn);
-        controlsDiv.appendChild(undoBtn);
-        controlsDiv.appendChild(cropBtn);
-        wrapper.appendChild(controlsDiv);
-
-        canvasContainer.appendChild(wrapper);
-        canvases.push(canvas);
-        showCanvas(currentIndex);
-      };
-      img.src = URL.createObjectURL(file);
-    }
-
-    function applyCrop(canvas) {
-      const canvasIndex = canvases.indexOf(canvas);
-      const crop = cropData[canvasIndex];
-      
-      if (!crop) {
-        alert('Please select an area to crop by dragging on the image.');
-        return;
-      }
-      
-      const ctx = canvas.getContext('2d');
-      const croppedImageData = ctx.getImageData(crop.x, crop.y, crop.width, crop.height);
-      
-      canvas.width = crop.width;
-      canvas.height = crop.height;
-      ctx.putImageData(croppedImageData, 0, 0);
-      addWatermark(ctx, canvas);
-      
-      // Clear crop data and overlay
-      delete cropData[canvasIndex];
-      const overlay = canvas.parentNode.querySelector('.crop-overlay');
-      if (overlay) overlay.style.display = 'none';
-    }
-
-    upload.addEventListener('change', (e) => {
-      Array.from(e.target.files).forEach(handleImage);
-    });
-
-    function addWatermark(ctx, canvas) {
-      ctx.font = "16px Arial";
-      ctx.fillStyle = "rgba(0,0,0,0.3)";
-      ctx.textAlign = "right";
-      ctx.fillText("Artha Education Institute", canvas.width - 10, canvas.height - 10);
-    }
-
-    function applyEffectToCanvas(canvas) {
-      const brightness = parseFloat(brightnessSlider.value);
-      const contrast = parseFloat(contrastSlider.value);
-      const grayscale = parseFloat(graySlider.value);
-      const ctx = canvas.getContext('2d');
-      let imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      let data = imageData.data;
-      for (let i = 0; i < data.length; i += 4) {
-        let r = data[i], g = data[i + 1], b = data[i + 2];
-        let avg = (r + g + b) / 3;
-        r = r * (1 - grayscale) + avg * grayscale;
-        g = g * (1 - grayscale) + avg * grayscale;
-        b = b * (1 - grayscale) + avg * grayscale;
-        r = (r - 128) * contrast + 128;
-        g = (g - 128) * contrast + 128;
-        b = (b - 128) * contrast + 128;
-        r *= brightness;
-        g *= brightness;
-        b *= brightness;
-        data[i] = Math.min(255, Math.max(0, r));
-        data[i + 1] = Math.min(255, Math.max(0, g));
-        data[i + 2] = Math.min(255, Math.max(0, b));
-      }
-      ctx.putImageData(imageData, 0, 0);
-      addWatermark(ctx, canvas);
-    }
-
-    applyBtn.addEventListener('click', () => applyEffectToCanvas(canvases[currentIndex]));
-    applyAllBtn.addEventListener('click', () => {
-      canvases.forEach(canvas => applyEffectToCanvas(canvas));
-    });
-
-    clearBtn.addEventListener('click', () => {
-      canvasContainer.innerHTML = '';
-      canvases = [];
-      backups = [];
-      cropData = {};
-      currentIndex = 0;
-    });
-
-    prevBtn.addEventListener('click', () => {
-      if (currentIndex > 0) currentIndex--;
-      showCanvas(currentIndex);
-    });
-
-    nextBtn.addEventListener('click', () => {
-      if (currentIndex < canvases.length - 1) currentIndex++;
-      showCanvas(currentIndex);
-    });
-
-    downloadAllJpg.addEventListener('click', () => {
-      const zip = new JSZip();
-      canvases.forEach((canvas, index) => {
-        const dataURL = canvas.toDataURL('image/jpeg', 1.0);
-        const imgData = dataURL.split(',')[1];
-        zip.file(`scan-${index + 1}.jpg`, imgData, { base64: true });
-      });
-      zip.generateAsync({ type: "blob" }).then(content => {
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(content);
-        link.download = "scanned-images.zip";
-        link.click();
-      });
-    });
-
-    downloadPDF.addEventListener('click', async () => {
-      const { jsPDF } = window.jspdf;
-      const pdf = new jsPDF();
-      canvases.forEach((canvas, i) => {
-        const imgData = canvas.toDataURL('image/jpeg', 1.0);
-        const width = pdf.internal.pageSize.getWidth();
-        const height = pdf.internal.pageSize.getHeight();
-        pdf.addImage(imgData, 'JPEG', 0, 0, width, height);
-        if (i < canvases.length - 1) pdf.addPage();
-      });
-      pdf.save('scanned-pages.pdf');
-    });
-  </script>
-</body>
-</html>
